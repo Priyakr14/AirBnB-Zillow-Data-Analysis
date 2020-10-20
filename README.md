@@ -2,7 +2,7 @@
 
 Open the Kumari_Priya_Data_Challenge.Rmd for the code.
 
-Open the html file in this repo to view the complete project.
+Open the html file (file:///C:/Users/Priya/Documents/Capital%20One/Kumari_Priya_Data_Challenge/Kumari_Priya_Data_Challenge.html) in this repo to view the complete project.
 
 To install R on Windows, click the “Download R for Windows” link. Then click the “base” link. Next, click the first link at the top of the new page. This link should say something like “Download R 3.0.3 for Windows,” except the 3.0.3 will be replaced by the most current version of R. The link downloads an installer program, which installs the most up-to-date version of R for Windows. Run this program and step through the installation wizard that appears. The wizard will install R into your program files folders and place a shortcut in your Start menu. Note that you’ll need to have all of the appropriate administration privileges to install new software on your machine
 
