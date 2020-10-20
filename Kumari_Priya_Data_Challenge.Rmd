@@ -1,0 +1,373 @@
+---
+title: "Data Challenge"
+author: "Priya Kumari"
+date: "1/31/2020"
+output:
+  html_document:
+    code_folding: hide
+    df_print: paged
+  pdf_document: default
+  word_document: default
+---
+
+## Airbnb-Zillow Data analysis   {.tabset .tabset-fade}
+
+### Introduction </span>
+
+> Problem Statement
+
+Hello!!
+The problem we are going to solve involves a real estate company that has a niche in purchasing properties. It has planned to rent out short-term as part of their business model specifically within New York City, wants to know which zip codes are the best to invest in. The company has already concluded that two bedroom properties are the most profitable.
+
+> Description of Data
+
+The following data will be used for analysis
+
+● Listings: Information on the listing including location, number of    bedrooms, room types (entire home/private home/shared home)
+
+● Zillow data (Bedroom Time Series ($) by zip code): Cost data to determine the average property price for 2 bedrooms
+
+> Assumptions
+
+●	The investor will pay for the property in cash.
+
+●	The time value of money discount rate is 0%.
+
+●	All properties and all square feet within each locale can be assumed to be homogeneous.
+
+● The cleaning fee is not added for monthly rate calculation, assuming it used for maintenance.
+
+● The properties has an occupancy rate of 75% 
+
+
+ > Required Packages
+ 
+We require the following packages for a smooth functioning.
+
+ 1. tidyr
+ 2. dplyr
+ 3. plotly
+ 4. ggplot2
+ 5. ggmap
+ 6. maps
+
+```{r, include=FALSE, warning=FALSE}
+#install.packages("ggplot2")
+#install.packages("plotly")
+#install.packages("dplyr")
+#install.packages("tidyr")
+#install.packages("maps")
+#install.packages("ggmap")
+library(ggplot2)
+library(plotly)
+library(dplyr)
+library(tidyr)
+library(maps)
+library(ggmap)
+```
+
+### Data Quality Check </span>
+
+> Import Data
+
+Next, import the airbnb listings file as airbnb and zillow-2bedroom property cost file as zillow.
+```{r}
+airbnb<- read.csv('C:/Users/Priya/Documents/Capital One/listings.csv', na.strings = "",stringsAsFactors = T, header = T)
+airbnb<- data.frame(airbnb)
+zillow<- read.csv('C:/Users/Priya/Documents/Capital One/Zip_Zhvi_2bedroom.csv')
+zillow<- data.frame(zillow)
+```
+> Dataset Dimensions
+
+Looking at the dimension of airbnb
+```{r}
+dim(airbnb)
+```
+and dimension of zillow
+```{r}
+dim(zillow)
+```
+> Quality Check - Airbnb
+
+Filter relevant Data from airbnb dataset
+
+From the above result we can see there are lot fields in the data.
+After reviewing the missing observations we have to drop columns with more than 75% missing values and keep the relevant fields as per the understanding of problem statement for the further analysis.
+```{r}
+missing_data<- as.data.frame (sort(sapply(airbnb,function(x) { length(which(is.na(x)))}), decreasing= T))
+missing_data<- subset(missing_data, missing_data[1]>0)
+missing_data[2]<-round((missing_data[1])/nrow(airbnb)*100,2)
+colnames(missing_data)<- c("missing_values_count","%_missing_values")
+head(missing_data, 10)
+airbnb<- subset(airbnb, select= c("id", "host_response_time", "host_response_rate", "neighbourhood_group_cleansed", "state", "zipcode", "latitude", "longitude", "property_type", "bedrooms", "price", "review_scores_rating"))
+```
+Consider the following columns for further analysis -  "id", "host_response_time", "host_response_rate", "neighbourhood_group_cleansed", "state", "zipcode", "latitude", "longitude", "property_type", "bedrooms", "price","review_scores_rating".
+
+Point to be noted that we have not selected city column as it has lots of wrong information, we have selected neighbourhood_group_cleansed and state, from which we can filter NY city for further analysis.
+Checking for missing values in airbnb dataset after selecting relevant columns for analysis
+```{r}
+missing_data<- as.data.frame (sort(sapply(airbnb,function(x) { length(which(is.na(x)))}), decreasing= T))
+missing_data<- subset(missing_data, missing_data[1]>0)
+missing_data[2]<-round((missing_data[1])/nrow(airbnb)*100,2)
+colnames(missing_data)<- c("missing_values_count","%_missing_values")
+head(missing_data,5)
+```
+There are 517 observations of missing zipcodes. Remove these observations from analysis.
+```{r}
+airbnb<- airbnb %>% drop_na(zipcode)
+```
+Since the client only wants the analysis of New York City- 2 bedrooms property. Select the 2 bedrooms properties first. Now look at the dimension of final airbnb dataset.
+```{r}
+airbnb<- subset(airbnb, airbnb$bedrooms == 2)
+dim(airbnb)
+```
+We are left with 6447 observations. Looking at the state column, we can see that there are 6445 observations of NY and 1 of Ny and one having missing values
+```{r}
+summary(airbnb$state)
+```
+Look at the zipcode and neighbourhood_group_cleansed column(which is a clean column , unlike the city column), these observations belongs to NY
+```{r, results='hide'}
+subset(airbnb, airbnb$state != "NY")
+subset(airbnb, (is.na(airbnb$state)))
+```
+Therefore, change the state column for these two observation to NY too.
+```{r}
+airbnb$state<- "NY"
+```
+Looking at the structure of filtered airbnb dataset, the price variable, which is the price of per night booking is of factor type, change it to numerical
+```{r, results='hide'}
+str(airbnb)
+airbnb$price<- as.numeric(gsub("[\\$,]", "", airbnb$price))
+```
+> Outliers check for price data
+
+Lets look at the distribution of price of per night booking per boroughs of New York city. Hover over the box plots and points to get more details.
+```{r}
+price_box<- ggplot(data = airbnb, aes(x = neighbourhood_group_cleansed, y = price, color = neighbourhood_group_cleansed)) +  labs(x = "Boroughs", y = "daily price") +
+       geom_boxplot() + theme(legend.position = "none")
+ggplotly(price_box)
+```
+We can clearly see that the price data contains outliers, so we will only consider the median price for our further analysis.
+
+> Remove Duplicate data if present
+
+```{r}
+airbnb<- airbnb %>% distinct()
+zillow<- zillow %>% distinct()
+```
+
+> Data Quality Check - Zillow
+
+Filter relevant data from zillow dataset
+
+Since zillow dataset has clean city column, we will select new york city from it.
+```{r}
+zillow<- subset(zillow, zillow$City =="New York")
+dim(zillow)
+```
+Checking from which month we start to have no missing values for property prices, we can see that from June 2007, we have no missing values for prices. keeping those columns only.
+The plot shows the monthly trend of cost of 2 bedroom properties for each zipcode. Hover over the lines to get more details. 
+```{r}
+missing_data_1<- as.data.frame (sort(sapply(zillow,function(x) { length(which(is.na(x)))}), decreasing= T))
+missing_data_1[2]<-round((missing_data_1[1])/nrow(zillow)*100,2)
+colnames(missing_data_1)<- c("missing_values_count","%_missing_values")
+head(subset(missing_data_1, missing_data_1$missing_values_count==0),10)
+zillow_0 <- zillow %>% gather(month, cost, X1996.04:X2017.06)
+zillow_0
+zillow_0 <- zillow_0 %>% rename(zipcode = RegionName)
+g <- ggplot(zillow_0, aes(x = month, y = cost, group = zipcode, color = factor(zipcode))) +
+  geom_line(alpha = 0.4) + theme(axis.text.x = element_blank()) + theme(legend.title = element_blank())
+ggplotly(g, tooltip = c("month", "cost", "zipcode")) 
+zillow_1<- zillow[-c(8:141)]
+```
+
+
+### Data Munging </span>
+
+Since the rent for properties in airbnb dataset are available for July 2019, we will predict the property cost in zillow dataset for July 2019 by calculating monthly growth rate(%) for property prices.
+```{r}
+monthly_price <- zillow_1[c(8:128)]
+monthly_price$growth_rate<- c()
+for (i in 1:25){
+  a<- c()
+  for (j in 1:120){
+    a[j]<- (monthly_price[i,j+1]-monthly_price[i, j])/monthly_price[i,j]*100
+  }
+  monthly_price$growth_rate[i]<- mean(a)
+}
+```
+The last updated price available is for June 2017, we will use the average monthly growth rate to calculate the price in July 2019.
+```{r}
+avg_growth<- monthly_price$growth_rate
+zillow_1<- cbind(zillow, avg_growth)
+zillow_1$Cost_Jul2019<- zillow_1$X2017.06 + (zillow_1$avg_growth*zillow_1$X2017.06*25/100) # need to predict the price of property after 25 months i.e July 2019
+zillow_1<- subset(zillow_1, select = c("RegionID", "RegionName","City","State", "SizeRank", "X2007.06", "X2017.06", "avg_growth", "Cost_Jul2019"))
+zillow_1<- zillow_1 %>% rename(zipcode = RegionName)
+```
+Now we will group the airbnb dataset by zipcodes and calculating median price for per night booking for each zipcode.
+```{r}
+byzip<- airbnb %>% group_by(zipcode)
+byzip<- byzip %>% summarise(
+  price = median(price)
+)
+```
+Now merge the median price values of each zipcode to zillow data. We will further calculate the monthly price for each zipcode property booking.
+```{r}
+zillow_1<- merge(x= zillow_1, y= byzip, by="zipcode")
+zillow_1$monthly_price<- zillow_1$price*30*0.75
+```
+
+> Break even points(in years) for each zipcode properties
+
+The next column that we will add to the merged dataset is the break-even point. This column gives how many year it will take for a property at a particular zipcode to recover its investment. We will order our data based on increasing break even point.
+```{r}
+zillow_1$break_even<- zillow_1$Cost_Jul2019/zillow_1$monthly_price/12
+zillow_final<- zillow_1[order(zillow_1$break_even), ]
+zillow_final$break_even<- round(zillow_final$break_even,2)
+```
+Look at the final dataset.
+```{r}
+zillow_final
+```
+
+> ROI for coming years from each zipcode
+
+Further we will also calculate the ROI after 15, 20, 25, 30, 35 and 40 years for the property at a particular zipcode.
+```{r}
+zillow_final$ROI15 <- (15*12*zillow_final$monthly_price - zillow_final$Cost_Jul2019)/zillow_final$Cost_Jul2019
+zillow_final$ROI20 <- (20*12*zillow_final$monthly_price - zillow_final$Cost_Jul2019)/zillow_final$Cost_Jul2019
+zillow_final$ROI25 <- (25*12*zillow_final$monthly_price - zillow_final$Cost_Jul2019)/zillow_final$Cost_Jul2019
+zillow_final$ROI30 <- (30*12*zillow_final$monthly_price - zillow_final$Cost_Jul2019)/zillow_final$Cost_Jul2019
+zillow_final$ROI35 <- (35*12*zillow_final$monthly_price - zillow_final$Cost_Jul2019)/zillow_final$Cost_Jul2019
+zillow_final$ROI40 <- (40*12*zillow_final$monthly_price - zillow_final$Cost_Jul2019)/zillow_final$Cost_Jul2019
+ROI<- cbind(zillow_final$zipcode, zillow_final$ROI15, zillow_final$ROI20, zillow_final$ROI25, zillow_final$ROI30, zillow_final$ROI35, zillow_final$ROI40)
+colnames(ROI)<- c("zipcode", "After_15yr", "After_20yr", "After_25yr", "After_30yr", "After_35yr", "After_40yr")
+ROI<- data.frame(ROI)
+ROI <- ROI %>% gather(time_period, Return, After_15yr:After_40yr)
+ROI$Return<- round(ROI$Return, 3)
+ROI_plot <- ggplot(ROI, aes(x = time_period, y = Return, group = zipcode, color = factor(zipcode))) +
+  geom_line(alpha = 0.4) + labs(y= "ROI") + theme(legend.title = element_blank())
+ggplotly(ROI_plot, tooltip = c("Return", "zipcode")) 
+```
+
+From the above plot we can clearly see that the zipcodes "11434", "10306" and "10303" are the best ones for investment.
+
+
+### Visual Data Narrative </span>
+
+> Total number of properties for each boroughs of New York city
+
+```{r}
+ggplot(airbnb, aes(x=neighbourhood_group_cleansed,
+              fill=neighbourhood_group_cleansed)) + labs(x = "Borough", y = "count") + geom_bar(stat="count", width=0.7) +guides(fill=guide_legend(title=NULL))+ theme_classic()+ theme(legend.position = "none")
+```
+
+> Booking price per night for the properties in each boroughs of New York City 
+(hover over the plot for details)
+
+```{r, warning=FALSE}
+price<- ggplot(data = airbnb, aes(x = price, fill=neighbourhood_group_cleansed)) + geom_density(alpha = 0.2) + scale_x_continuous(limits = quantile(airbnb$price, c(0, 0.97))) + labs(x = "Daily price", y = "Density") + guides(fill = guide_legend(title = "Boroughs")) 
+ggplotly(price, tooltip = c("price", "neighbourhood_group_cleansed"))
+```
+
+> Ratings of properties under each Boroughs of New York City 
+(hover over the plot for details)
+
+```{r}
+ratings<- ggplot(data = airbnb, aes(x= neighbourhood_group_cleansed,y = review_scores_rating, fill=neighbourhood_group_cleansed)) + geom_jitter(alpha = 0.3) + labs(x = "Boroughs", y = "overall rating") + guides(fill = guide_legend(title = "Neighbourhood")) + theme(legend.position = "none")
+ggplotly(ratings, tooltip = "review_scores_rating")
+```
+
+> How cost of property and monthly price for bookings affects the break even point (in years)
+(hover over the points for details)
+
+```{r}
+plot_ly(zillow_final, x = ~monthly_price, y = ~Cost_Jul2019, z = ~break_even) %>%
+  add_markers(color = ~break_even)
+```
+
+> Most profitable zipcodes (Lower break-even point)
+(hover over the points for details of break even year and zipcode )
+
+```{r}
+profitable <- ggplot(zillow_final, aes(x = as.factor(zipcode), y = break_even, group = zipcode, color = factor(zipcode))) +
+  geom_jitter(alpha = 0.4) + labs(x = "zipcode", y= "Years to start profiting") + theme(legend.title = element_blank()) + theme(axis.text.x = element_blank()) + theme(legend.position = "none")
+ggplotly(profitable, tooltip = c("break_even", "zipcode"))
+```
+
+> Best Locations to invest(hover over the points to get location and break_even years after which property will start profiting)
+
+```{r, include=FALSE}
+airbnb_final<- merge(x = airbnb, y = zillow_final, by= "zipcode")
+plot_area <- c(bottom  = min(airbnb$latitude) - 0.15*(max(airbnb$latitude)-min(airbnb$latitude)),
+                 top     = max(airbnb_final$latitude)+ 0.15*(max(airbnb$latitude)-min(airbnb$latitude)),
+                 left    = min(airbnb$longitude)- 0.1*(max(airbnb$longitude)-min(airbnb$longitude)),
+                 right   = max(airbnb$longitude)+ 0.1*(max(airbnb$longitude)-min(airbnb$longitude)))
+best_zip <- get_stamenmap(plot_area, zoom = 10, maptype = "terrain")
+```
+
+
+```{r, warning=FALSE}
+best_loc<- ggmap(best_zip) + geom_point(
+        aes(x=longitude, y=latitude, color= break_even), 
+        data=airbnb_final, alpha=.4, na.rm = T, size = 4)
+ggplotly(best_loc, tooltip = c("longitude", "latitude", "break_even"))
+  
+```
+
+> Key Insights
+
+● Brooklyn and Manhattan has the most listed 2- bedr0om properties on airbnb.
+
+● Manhattan has the most costly airbnb listings, based upon price of per night bookings.
+
+● Mostly all boroughs in New York City has got good reviews. Very few properties in Brooklyn and Manhattan has got poor ratings. We further need to dwell in text analytics to reason for such poor reviews.
+
+● The properties that have low costs and high price of bookings generates high ROI and gives lower break-even point.
+
+● The three best zipcode to invest in are : 11434, 10303, 10306
+
+● The zipcodes where the client should invest belongs to Staten Island or Brooklyn boroughs of New York City.
+
+
+### What's Next </span>
+
+> Recommendations
+
+● Can use additional data of property maintenance costs for getting actual idea of total expenses and earning.
+
+● Can use the availability of property within month to year data to calculate its actual occupancy rate.
+
+● Can use instant booking and cancellation policy data to predict the rate of occupancy of the property.
+
+● Can use sensitivity analytics to check the reviews of each property and how it affects the profitability.
+
+● Can use text analytics for further observing how overview of property, transit ease affects the bookings.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
